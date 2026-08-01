@@ -1,3 +1,7 @@
+v0.1.6
+* Fixed PROJJSON output that PROJ rejected: the WGS 84 datum ensemble now lists all of its members, coordinate system axes carry an "abbreviation", the base CRS of a ProjectedCRS gets its own "coordinate_system", and the Cartesian subtype is spelled as the schema requires.
+* UTM central meridians are now exact (zone 15 was -92.99999999999999).
+
 v0.1.5
 * Added interrupted projections: igh, igh_o, imoll, imoll_o.
 

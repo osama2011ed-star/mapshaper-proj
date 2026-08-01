@@ -68,7 +68,11 @@ function wkt_make_ups_name(P, projcs) {
 }
 
 function wkt_make_utm_params(P) {
-  var lon0 = P.lam0 * 180 / M_PI;
+  // Recover the zone index that pj_utm_zone() encoded into P.lam0 and derive
+  // the central meridian from it. Converting P.lam0 straight back to degrees
+  // leaves rounding debris (zone 15 gives -92.99999999999999).
+  var zone = Math.round((P.lam0 + M_PI) * 30 / M_PI - 0.5);
+  var lon0 = (zone + 0.5) * 6 - 180;
   return [
     ["latitude_of_origin", 0],
     ["central_meridian", lon0],

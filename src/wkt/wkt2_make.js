@@ -265,6 +265,20 @@ var wkt2_make_param_defs = {
 
 // --- Geodetic emission tables ----------------------------------------------
 
+// Realizations of the EPSG:6326 datum ensemble. A datum ensemble is only
+// meaningful with two or more members, and PROJ rejects a definition that
+// names fewer ("ensemble should have at least 2 datums").
+var WKT2_WGS84_ENSEMBLE_MEMBERS = [
+  'World Geodetic System 1984 (Transit)',
+  'World Geodetic System 1984 (G730)',
+  'World Geodetic System 1984 (G873)',
+  'World Geodetic System 1984 (G1150)',
+  'World Geodetic System 1984 (G1674)',
+  'World Geodetic System 1984 (G1762)',
+  'World Geodetic System 1984 (G2139)',
+  'World Geodetic System 1984 (G2296)'
+];
+
 // Proj4 datum id -> WKT2 emitter metadata. When the datum is not in this
 // table we fall back to DATUM[<wkt1Name-with-spaces>] with no ID.
 var wkt2_datum_emitters = {
@@ -274,6 +288,7 @@ var wkt2_datum_emitters = {
     ensemble: true,
     ensembleId: 6326,
     ensembleName: 'World Geodetic System 1984 ensemble',
+    ensembleMembers: WKT2_WGS84_ENSEMBLE_MEMBERS,
     datumName: 'World Geodetic System 1984'
   },
   NAD83: {
@@ -388,12 +403,15 @@ function wkt2_get_towgs84(P) {
 }
 
 function wkt2_wrap_boundcrs(source, towgs84) {
+  var ensemble = ['ENSEMBLE', 'World Geodetic System 1984 ensemble'];
+  WKT2_WGS84_ENSEMBLE_MEMBERS.forEach(function(member) {
+    ensemble.push(['MEMBER', member]);
+  });
+  ensemble.push(['ELLIPSOID', 'WGS 84', 6378137, 298.257223563, WKT2_LENGTHUNIT_M, ['ID', 'EPSG', 7030]]);
+  ensemble.push(['ENSEMBLEACCURACY', 2]);
+  ensemble.push(['ID', 'EPSG', 6326]);
   var target = ['GEOGCRS', 'WGS 84',
-    ['ENSEMBLE', 'World Geodetic System 1984 ensemble',
-      ['MEMBER', 'World Geodetic System 1984'],
-      ['ELLIPSOID', 'WGS 84', 6378137, 298.257223563, WKT2_LENGTHUNIT_M, ['ID', 'EPSG', 7030]],
-      ['ENSEMBLEACCURACY', 2],
-      ['ID', 'EPSG', 6326]],
+    ensemble,
     ['PRIMEM', 'Greenwich', 0, WKT2_ANGLEUNIT, ['ID', 'EPSG', 8901]],
     ['CS', 'ellipsoidal', 2],
     ['AXIS', 'geodetic latitude (Lat)', 'north', ['ORDER', 1], WKT2_ANGLEUNIT],
@@ -458,7 +476,9 @@ function wkt2_make_datum_node(P, emitter, ellipsoidNode) {
   if (emitter && emitter.ensemble) {
     // WKT2:2019 ENSEMBLE form (WGS 84 and a handful of others)
     var ens = ['ENSEMBLE', emitter.ensembleName];
-    ens.push(['MEMBER', emitter.datumName]);
+    (emitter.ensembleMembers || [emitter.datumName]).forEach(function(member) {
+      ens.push(['MEMBER', member]);
+    });
     ens.push(ellipsoidNode);
     ens.push(['ENSEMBLEACCURACY', 2]);
     if (emitter.ensembleId) {

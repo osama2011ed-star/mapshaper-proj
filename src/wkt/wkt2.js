@@ -310,6 +310,9 @@ function wkt2_projcrs_to_projjson(node) {
     base_crs: wkt2_geogcrs_to_projjson(wkt2_find(node, 'BASEGEOGCRS') || wkt2_find(node, 'BASEGEODCRS')),
     conversion: wkt2_conversion_to_projjson(wkt2_find(node, 'CONVERSION'))
   };
+  if (!out.base_crs.coordinate_system) {
+    out.base_crs.coordinate_system = wkt2_default_ellipsoidal_cs();
+  }
   var cs = wkt2_cs_to_projjson(node);
   if (cs) out.coordinate_system = cs;
   var id = wkt2_id_to_projjson(node);
@@ -442,16 +445,101 @@ function wkt2_primem_to_projjson(node) {
   return out;
 }
 
+// WKT2 CS keywords are case-insensitive, but the PROJJSON schema enumerates
+// exact spellings -- notably "Cartesian" with a capital C.
+var wkt2_cs_subtypes = {
+  affine: 'affine',
+  cartesian: 'Cartesian',
+  cylindrical: 'cylindrical',
+  ellipsoidal: 'ellipsoidal',
+  linear: 'linear',
+  ordinal: 'ordinal',
+  parametric: 'parametric',
+  polar: 'polar',
+  spherical: 'spherical',
+  vertical: 'vertical',
+  temporalcount: 'TemporalCount',
+  temporaldatetime: 'TemporalDateTime',
+  temporalmeasure: 'TemporalMeasure'
+};
+
+// WKT2 packs an axis abbreviation into the name -- "geodetic latitude (Lat)",
+// or just "(E)" when there is no long name. PROJJSON requires the two to be
+// separate members.
+var wkt2_axis_names_by_abbrev = {
+  E: 'Easting',
+  N: 'Northing',
+  Lat: 'Geodetic latitude',
+  Lon: 'Geodetic longitude'
+};
+
+var wkt2_axis_abbrevs_by_name = {
+  'easting': 'E',
+  'northing': 'N',
+  'geodetic latitude': 'Lat',
+  'geodetic longitude': 'Lon'
+};
+
+var wkt2_axis_abbrevs_by_direction = {
+  east: 'E',
+  north: 'N',
+  west: 'W',
+  south: 'S',
+  up: 'H',
+  down: 'D'
+};
+
+function wkt2_cs_subtype_to_projjson(keyword) {
+  var key = String(keyword == null ? '' : keyword).toLowerCase();
+  if (!key) return 'ellipsoidal';
+  return wkt2_cs_subtypes[key] || key;
+}
+
+function wkt2_axis_to_projjson_name(rawName, direction) {
+  var name = String(rawName == null ? '' : rawName).trim();
+  var abbrev = '';
+  var parts = name.match(/^(.*?)\s*\(([^()]+)\)$/);
+  if (parts) {
+    name = parts[1].trim();
+    abbrev = parts[2].trim();
+  }
+  if (!name && abbrev) {
+    name = wkt2_axis_names_by_abbrev[abbrev] || abbrev;
+  }
+  if (!abbrev) {
+    abbrev = wkt2_axis_abbrevs_by_name[name.toLowerCase()] ||
+      wkt2_axis_abbrevs_by_direction[String(direction).toLowerCase()] ||
+      name.charAt(0).toUpperCase();
+  }
+  if (name) name = name.charAt(0).toUpperCase() + name.substr(1);
+  return {name: name || abbrev, abbreviation: abbrev};
+}
+
+// WKT2 omits CS[] from BASEGEOGCRS, but PROJJSON requires a coordinate_system
+// on every CRS object, including the base of a ProjectedCRS.
+function wkt2_default_ellipsoidal_cs() {
+  return {
+    subtype: 'ellipsoidal',
+    axis: [
+      {name: 'Geodetic latitude', abbreviation: 'Lat', direction: 'north', unit: 'degree'},
+      {name: 'Geodetic longitude', abbreviation: 'Lon', direction: 'east', unit: 'degree'}
+    ]
+  };
+}
+
 function wkt2_cs_to_projjson(node) {
   var cs = wkt2_find(node, 'CS');
   var axes = wkt2_find_all(node, 'AXIS');
   if (!cs && axes.length === 0) return null;
   var out = {
-    subtype: cs && cs[1] ? String(cs[1]).toLowerCase() : 'ellipsoidal',
+    subtype: wkt2_cs_subtype_to_projjson(cs && cs[1]),
     axis: axes.map(function(a) {
+      var direction = wkt2_axis_direction(a);
+      var parsed = wkt2_axis_to_projjson_name(wkt2_name_of(a), direction);
       var ax = {
-        name: wkt2_name_of(a),
-        direction: wkt2_axis_direction(a)
+        name: parsed.name,
+        abbreviation: parsed.abbreviation,
+        direction: direction
       };
       var unit = wkt2_unit_to_projjson(wkt2_find(a, 'ANGLEUNIT') || wkt2_find(a, 'LENGTHUNIT') || wkt2_find(a, 'SCALEUNIT'));
       if (unit) {
